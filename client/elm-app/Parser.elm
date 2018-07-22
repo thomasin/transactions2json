@@ -11,9 +11,59 @@ import Types exposing (..)
 
 type alias Row = List TextItem
 type alias Rows = List Row
+type alias Strings = List String
 
 
 headers = [ "Date", "Transaction", "Debit", "Credit", "Balance" ]
+
+
+detailedHeaders =
+  [ HeaderConfig "Id" IndexColumn
+  , HeaderConfig "Date" StringColumn
+  , HeaderConfig "Transaction" StringColumn
+  , HeaderConfig "Debit" MoneyColumn
+  , HeaderConfig "Credit" MoneyColumn
+  , HeaderConfig "Balance" MoneyColumn
+  ]
+
+
+headerNames = List.map .headerName detailedHeaders
+
+
+type ColumnType
+  = StringColumn
+  | MoneyColumn
+  | IndexColumn
+
+
+type alias HeaderConfig a =
+  { headerName : String
+  , columnType : ColumnType
+  , key : ( a -> Strings )
+  }
+
+
+type alias XTransaction =
+  { id : Strings
+  , date : Strings
+  , description : Strings
+  , debit : Strings
+  , credit : Strings
+  , balance : Strings
+  }
+
+
+stringColumn headers headerName row =
+  getStrings headers headerName row
+
+
+moneyColumn headers headerName row =
+  getStrings headers headerName row
+  |> String.join ""
+  |> stringToFloat
+  |> Maybe.withDefault 0.0
+  |> toString
+  |> (\s -> (::) s [])
 
 
 parsePages : RawPdf -> Transactions
@@ -33,7 +83,7 @@ parsePage ( _, page ) =
 
 parseHeaders : RawPage -> Row
 parseHeaders page =
-  List.filter (\i -> List.member i.text headers ) page
+  List.filter (\i -> List.member i.text headerNames ) page
 
 
 parseRows : RawPage -> Headers -> Transactions
