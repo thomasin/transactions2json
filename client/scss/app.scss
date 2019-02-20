@@ -7,6 +7,7 @@ $widescreen-enabled: false;
 $fullhd-enabled: false;
 
 @import "~bulma/bulma";
+@import "~jam-icons/css/jam.min.css";
 
 html {
   height: 100%;
@@ -15,6 +16,65 @@ html {
 body {
   background-color: #fafafa;
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-row {
+  background-color: #f5f5f5;
+  padding: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.layout-columns {
+  flex-grow: 1;
+  margin-top: 0px !important;
+}
+
+.header {
+  &-card {
+    .card-footer {
+      border-top: none;
+    }
+
+    input[type=checkbox] {
+      margin-right: 10px;
+    }
+  }
+
+  .menu-label {
+    cursor: pointer;
+  }
+
+  &-is-closed {
+    .field {
+      height: 0;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .card-footer {
+      height: 0;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .menu-label {
+      margin-bottom: 0;
+    }
+  }
+}
+
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  background-color: #f7f7f7;
+
+  .input {
+    border: none;
+    box-shadow: none;
+  }
 }
 
 .dropzone {

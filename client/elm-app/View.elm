@@ -1,155 +1,281 @@
 module View exposing (view)
 
+import Dict as Dict
 import Html exposing (Html, text)
-import Html.Attributes exposing (class, id, placeholder, value)
-import Html.Events as Html exposing (onSubmit, onInput, onClick)
-
+import Html.Attributes exposing (checked, class, id, placeholder, type_, value)
+import Html.Events as Html exposing (onCheck, onClick, onInput, onSubmit)
+import Sidebar as Sidebar
 import Types exposing (..)
+import Browser exposing (Document)
+
+
 
 --
 
 
+view : Model -> Document Msg
 view model =
-  Html.div []
-  ( ( (++) [ dropZone ] << transactionsList ) model.data )
+    Document
+        "..."
+        [ Html.div [ class "columns layout-columns" ]
+            [ Html.div [ class "column is-3 sidebar" ] [ Sidebar.view model ]
+            , Html.div [ class "column" ]
+                (((++) [ dropZone ] << transactionsList) model)
+            ]
+        ]
+
 
 
 -- private
 
 
-transactionsList : DataStatus -> List ( Html Msg )
-transactionsList maybeData =
-  case maybeData of
-    NoData -> [ section [] ]
-    TransactionsFound _ transactions ->
-      [ section [ downloadForm ]
-      , section
-          ( ( unwrapTransactions ( List.map displayTransaction ) transactions )
-            |> (++) [ displayTitle transactions, displayHeaders ]
-          )
-      ]
+transactionsList : Model -> List ( Html Msg )
+transactionsList { data, options } =
+    case data of
+        NoData ->
+            [ section [] ]
 
-section : List ( Html msg ) -> Html msg
+        TransactionsFound _ transactions ->
+            [ section [ downloadForm ]
+            , section
+                (   List.map ( displayTransaction ( unwrapHeaders options.headers ) ) transactions
+                    |> (++) [ displayTitle, displayHeaders options.headers ]
+                )
+            ]
+
+
+section : List (Html msg) -> Html msg
 section content =
-  Html.section [ class "section" ]
-    [ Html.div [ class "container" ]
-      content
-    ]
+    Html.section [ class "section" ]
+        [ Html.div [ class "container is-fluid" ]
+            content
+        ]
+
 
 
 -- dropzone
 
 
-dropZone =  
-  section
-    [ Html.div [ class "dropzone", id "dropzone" ]
-      [ Html.span [ class "jam jam-upload icon-upload" ] [] ]
-    ]
+dropZone : Html msg
+dropZone =
+    section
+        [ Html.div [ class "dropzone", id "dropzone" ]
+            [ Html.span [ class "jam jam-upload icon-upload" ] [] ]
+        ]
+
 
 
 -- download form
 
 
+downloadForm : Html Msg
 downloadForm =
-  Html.form [ onSubmit ( FormAction PrepareForDownload ) ]
-    [ Html.div [ class "field has-addons" ]
-      [ Html.div [ class "control has-icons-left is-expanded" ] fileNameInput
-      , Html.div [ class "control" ] [ fileExtension ]
-      , Html.div [ class "control" ] [ downloadButton ]
-      ]
-    ]
+    Html.form [ onSubmit (ExportAction PrepareForExport) ]
+        [ Html.div [ class "field has-addons" ]
+            [ Html.div [ class "control has-icons-left is-expanded" ] fileNameInput
+            , Html.div [ class "control" ] [ fileExtension ]
+            , Html.div [ class "control" ] [ downloadButton ]
+            ]
+        ]
 
 
+fileExtension : Html Msg
 fileExtension =
-  Html.span [ class "select" ]
-    [ Html.select [ onInput ( FormAction << SetFileType ) ]
-      [ Html.option [ value "csv" ] [ text ".csv" ]
-      , Html.option [ value "json" ] [ text ".json" ]
-      ]
-    ]
+    Html.span [ class "select" ]
+        [ Html.select [ onInput (ExportAction << SetFileType) ]
+            [ Html.option [ value "csv" ] [ text ".csv" ]
+            , Html.option [ value "json" ] [ text ".json" ]
+            ]
+        ]
 
 
+fileNameInput : List (Html Msg)
 fileNameInput =
-  [ Html.input [ class "input", placeholder "File name", onInput ( FormAction << SetFileName ) ] []
-  , Html.span [ class "icon is-small is-left jam jam-files" ] []
-  ]
+    [ Html.input [ class "input", placeholder "File name", onInput (ExportAction << SetFileName << FileName) ] []
+    , Html.span [ class "icon is-small is-left jam jam-files" ] []
+    ]
 
 
+downloadButton : Html msg
 downloadButton =
-  Html.button [ class "button is-success" ] [ text "Download file" ]
+    Html.button [ class "button is-success" ] [ text "Download file" ]
 
 
--- transaction table title
+displayTitle : Html msg
+displayTitle =
+    Html.div [ class "has-text-centered" ]
+        [ Html.h4 [ class "title is-4 has-text-centered" ] [ text "Transactions" ]
+        ]
 
 
-displayTitle : TransactionValidity -> Html msg
-displayTitle wrappedTransactions =
-  Html.div [ class "has-text-centered" ]
-    [ Html.h4 [ class "title is-4 has-text-centered" ] [ text "Transactions" ]
-    , validityTag wrappedTransactions
-    ]
+displayHeaders : HeaderOptions -> Html msg
+displayHeaders headerOptions =
+    Html.div [ class "columns columns-header" ]
+        (List.map displayHeader (unwrapHeaders headerOptions))
 
 
-validityTag wrappedTransactions =
-  case wrappedTransactions of
-    Valid _ -> Html.span [ class "tag tag-valid is-success" ] [ text "Valid" ]
-    Invalid incorrectTransaction transactions ->  
-      Html.span [ class "tag tag-valid is-danger" ] [ text (( (++) "Transaction on " << (++) incorrectTransaction.date ) " is incorrect" ) ]
-  
+displayHeader : Header -> Html msg
+displayHeader header =
+    case header.columnType of
+        FloatColumn ->
+            headerColumn ( Maybe.withDefault header.name header.displayAs ) ((++) "has-text-right" (getColumnWidth header.columnWidth))
 
--- transaction headers
+        MoneyColumn ->
+            headerColumn ( Maybe.withDefault header.name header.displayAs ) ((++) "has-text-right" (getColumnWidth header.columnWidth))
 
-
-displayHeaders : Html msg
-displayHeaders =
-  Html.div [ class "columns columns-header" ]
-    [ headerColumn "Date" "is-2"
-    , headerColumn "Description" ""
-    , headerColumn "Debit" "is-1 has-text-right"
-    , headerColumn "Credit" "is-1 has-text-right"
-    , headerColumn "Balance" "is-1 has-text-right"
-    , deleteHeader
-    ]
+        _ ->
+            headerColumn ( Maybe.withDefault header.name header.displayAs ) (getColumnWidth header.columnWidth)
 
 
+getColumnWidth : Maybe Int -> String
+getColumnWidth columnWidth =
+    (++) ((Maybe.withDefault " " << Maybe.map String.fromInt) columnWidth) " "
+        |> (++) " is-"
+
+
+findHeader headerId headers =
+    List.filter (\h -> (==) h.id headerId) headers
+        |> List.head
+
+
+deleteHeader : Html msg
 deleteHeader =
-  Html.div [ class "column is-narrow" ]
-    [ Html.div [ class "header-label has-background-danger has-text-centered" ]
-      [ Html.span [ class "jam jam-trash" ] [] ]
-    ]
+    Html.div [ class "column is-narrow" ]
+        [ Html.div [ class "header-label has-background-danger has-text-centered" ]
+            [ Html.span [ class "jam jam-trash" ] [] ]
+        ]
 
 
+headerColumn : String -> String -> Html msg
 headerColumn columnLabel columnOptions =
-  Html.div [ class ( (++) "column " columnOptions ) ]
-    [ Html.p [ class "header-label has-background-primary" ] 
-      [ text columnLabel ] ]
+    Html.div [ class ((++) "column " columnOptions) ]
+        [ Html.p [ class "header-label has-background-primary" ]
+            [ text columnLabel ]
+        ]
+
 
 
 -- transaction list
 
 
-displayTransaction : Transaction -> Html Msg
-displayTransaction transaction =
-  Html.div [ class "columns columns-transaction" ]
-    [ Html.div [ class "column has-background-light is-2 is-bold" ] [ text transaction.date ]
-    , Html.div [ class "column has-background-light" ]
-      ( List.map (\str -> Html.div [] [ text str ] ) transaction.description )
-    , floatColumn transaction.debit
-    , floatColumn transaction.credit
-    , floatColumn ( Just transaction.balance )
-    , deleteColumn transaction.id
-    ]
+displayTransaction : List Header -> Transaction -> Html Msg
+displayTransaction headers transaction =
+    Html.div [ class "columns columns-transaction" ]
+        (Dict.toList transaction.columns
+            |> List.sortBy (unwrapHeaderId << .headerId << Tuple.second)
+            |> List.map (displayTransactionField headers)
+        )
 
 
-floatColumn : Maybe Float -> Html msg
-floatColumn float =
-  Html.div [ class "column has-background-light is-1 has-text-right" ]
-    [ text ( ( Maybe.withDefault "--" << Maybe.map toString ) float ) ]
+
+--( List.map displayTransactionField << List.sortBy ( unwrapHeaderId << .headerId << Tuple.second ) << Dict.toList ) transaction.columns )
 
 
-deleteColumn : Int -> Html Msg
+displayTransactionField : List Header -> ( String, FieldConfig ) -> Html msg
+displayTransactionField headers ( _, { headerId, field } ) =
+    let
+        options =
+            generateDisplayOptions <| findHeader headerId headers
+    in
+    displayColumn options <|
+        case field of
+            StringField string ->
+                stringColumn string
+
+            DateField string ->
+                stringColumn string
+
+            TextField strings ->
+                textColumn strings
+
+            FloatField maybeFloat ->
+                floatColumn maybeFloat
+
+            MoneyField float ->
+                floatColumn float
+
+            BlankField ->
+                stringColumn "--"
+
+
+displayColumn options column =
+    column options
+
+
+generateDisplayOptions maybeHeader =
+    case maybeHeader of
+        Nothing ->
+            defaultDisplayOptions
+
+        Just header ->
+            { columnWidth = getColumnWidth header.columnWidth
+            , typeSpecific =
+                case header.columnType of
+                    StringColumn ->
+                        " "
+
+                    FloatColumn ->
+                        " has-text-right "
+
+                    DateColumn ->
+                        " is-bold "
+
+                    LongTextColumn ->
+                        " "
+
+                    MoneyColumn ->
+                        " has-text-right"
+            }
+
+
+defaultDisplayOptions =
+    { columnWidth = " "
+    , typeSpecific = ""
+    }
+
+
+type alias DisplayOptions =
+    { columnWidth : String
+    , typeSpecific : String
+    }
+
+
+
+--boolColumn : TransactionId -> Bool -> ( TransactionId -> Msg ) -> Html Msg
+--boolColumn transactionId bool msg =
+--  Html.div [ class "column has-background-light is-1 has-text-centered" ]
+--    [ Html.input [ type_ "checkbox", checked bool, onClick ( msg transactionId ) ] []
+--    ]
+
+
+floatColumn : Float -> DisplayOptions -> Html msg
+floatColumn float displayOptions =
+    genericColumn displayOptions
+        [ text ( String.fromFloat float ) ]
+
+
+stringColumn : String -> DisplayOptions -> Html msg
+stringColumn string displayOptions =
+    genericColumn displayOptions
+        [ text string ]
+
+
+textColumn : List String -> DisplayOptions -> Html msg
+textColumn strings displayOptions =
+    genericColumn displayOptions
+        (List.map (\str -> Html.div [] [ text str ]) strings)
+
+
+deleteColumn : TransactionId -> Html Msg
 deleteColumn transactionId =
-  Html.div 
-  [ class "column column-delete is-narrow has-text-centered"
-  , onClick ( DeleteTransaction transactionId ) 
-  ] [ Html.span [ class "jam jam-close" ] [] ]  
+    Html.div
+        [ class "column column-delete is-narrow has-text-centered"
+        , onClick (DeleteTransaction transactionId)
+        ]
+        [ Html.span [ class "jam jam-close" ] [] ]
+
+
+genericColumn displayOptions content =
+    Html.div
+        [ class ((++) "column has-background-light" <| (++) displayOptions.typeSpecific displayOptions.columnWidth) ]
+        content

@@ -1,76 +1,122 @@
-module Encode exposing (asJson, asCsv)
+module Encode exposing (asCsv, asJson)
 
-import Json.Encode exposing (Value, object, string, list, float, null)
-
+import Dict as Dict
+import Json.Encode as E exposing (Value, bool, float, list, null, object, string)
 import Types exposing (..)
+import List
+import Utils as U
+
 
 --
 
 
-asJson : FileName -> TransactionValidity -> Value
+asJson : FileName -> Transactions -> Value
 asJson fileName transactions =
-  unwrapTransactions
-    (\t -> object
-        [ ( "fileName", string fileName )
-        , ( "transactions", encodeListWith encodeTransaction t )
+    exportObject fileName ( list transactionToJson transactions )
+
+
+asCsv : FileName -> List Header -> Transactions -> Value
+asCsv fileName headers transactions =
+    exportObject fileName ( string ( transactionsToCsv transactions headers ) )
+
+
+exportObject : FileName -> Value -> Value
+exportObject fileName transactions =
+    object
+        [ ( "fileName", string ( unwrapFileName fileName ) )
+        , ( "transactions", transactions )
         ]
-    ) transactions
-
-
-asCsv : FileName -> TransactionValidity -> Value
-asCsv fileName transactions =
-  unwrapTransactions
-    (\t -> object
-        [ ( "fileName", string fileName )
-        , ( "transactions", string ( transactionsToCsvs t ) )
-        ]
-    ) transactions
-
 
 
 -- private
 
 
-encodeTransaction : Transaction -> Value
-encodeTransaction transaction =
-  object
-    [ ( "date", string transaction.date )
-    , ( "description", encodeListWith string transaction.description )
-    , ( "debit", encodeMaybeFloat transaction.debit )
-    , ( "credit", encodeMaybeFloat transaction.credit )
-    , ( "credit", encodeMaybeFloat transaction.credit )
-    , ( "balance", float transaction.balance )
-    ]
+transactionToJson : Transaction -> Value
+transactionToJson transaction =
+    Dict.toList transaction.columns
+    |> List.map transactionFieldToJson
+    |> object
+
+
+transactionFieldToJson : ( String, FieldConfig ) -> ( String, Value )
+transactionFieldToJson ( fieldName, { field } ) =
+    case field of
+        StringField s ->
+            ( fieldName, string s )
+
+        DateField s ->
+            ( fieldName, string s )
+
+        TextField ls ->
+            ( fieldName, list string ls )
+
+        FloatField f ->
+            ( fieldName, float f )
+
+        MoneyField f ->
+            ( fieldName, float f )
+
+        BlankField ->
+            ( fieldName, null )
 
 
 encodeMaybeFloat : Maybe Float -> Value
 encodeMaybeFloat maybe =
-  case maybe of
-    Nothing -> null
-    Just f -> float f
+    case maybe of
+        Nothing ->
+            null
+
+        Just f ->
+            float f
 
 
-encodeListWith : ( a -> Value ) -> List a -> Value
-encodeListWith func l =
-  ( list << List.map func ) l
+transactionsToCsv : Transactions -> List Header -> String
+transactionsToCsv transactions headers =
+    List.map transactionToCsvRow transactions
+    |> (::) ( headersToCsvRow headers )
+    |> String.join "\u{000D}\n"
 
 
-transactionsToCsvs transactions =
-  List.map transactionToCsvRow transactions
-  |> (::) ( "Date,Description,Debit,Credit,Balance" )
-  |> String.join "\r\n"
+headersToCsvRow : List Header -> String
+headersToCsvRow headers =
+    List.map U.displayHeaderName headers
+    |> String.join ","
 
 
+transactionToCsvRow : Transaction -> String
 transactionToCsvRow t =
-  String.join ","
-    [ dQ t.date
-    , dQ ( String.join " " t.description )
-    , ( toString << Maybe.withDefault 0.0 ) t.debit
-    , ( toString << Maybe.withDefault 0.0 ) t.credit
-    , toString t.balance
-    ]
+    Dict.toList t.columns
+    |> List.map transactionFieldToCsv
+    |> String.join ","
+
+
+transactionFieldToCsv : ( String, FieldConfig ) -> String
+transactionFieldToCsv ( fieldName, { field } ) =
+    case field of
+        StringField s ->
+            dQ s
+
+        DateField s ->
+            dQ s
+
+        TextField ls ->
+            dQ ( String.join " " ls )
+
+        FloatField f ->
+            String.fromFloat f
+
+        MoneyField s ->
+            String.fromFloat s
+
+        BlankField ->
+            dQ ""
+
+
 
 -- double quote string
+
+
+dQ : String -> String
 dQ str =
-  (++) str "\""
-  |> (++) "\""
+    (++) str "\""
+    |> (++) "\""

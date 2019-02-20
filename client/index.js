@@ -1,4 +1,4 @@
-import Elm from "./elm-app/Main"
+import { Elm } from "./elm-app/Main"
 import scss from "./scss/app.scss"
 import { saveAs } from 'file-saver/FileSaver'
 var pdfjs = require("pdfjs-dist")
@@ -8,8 +8,7 @@ var app = undefined
 document.addEventListener("DOMContentLoaded", contentLoaded)
 
 function contentLoaded() {
-  const node = document.getElementById('app')
-  app = Elm.Main.fullscreen()
+  app = Elm.Main.init()
 
   app.ports.domLoaded.subscribe(createDragzone)
   app.ports.downloadJson.subscribe(downloadJSON)
@@ -55,7 +54,7 @@ function readFile (file) {
     var reader = new FileReader()
 
     reader.onloadend = (event) => {
-      resolve(event.target.result)
+      resolve({ fileName: file.name, buffer: event.target.result })
     }
 
     reader.readAsArrayBuffer(file)
@@ -68,12 +67,12 @@ function extractTextItems(files) {
   })
 }
 
-function getPdf(file, resolve, reject) {
-  pdfjs.getDocument(file)
+function getPdf({ fileName, buffer }, resolve, reject) {
+  pdfjs.getDocument(buffer)
     .then((pdf) => Promise.all(getPages(pdf)))
     .then((pages) => Promise.all(pages.map(page => page.getTextContent())))
     .then((pages) => pages.reduce(transformPage, {}))
-    .then(resolve)
+    .then((pages) => resolve({ fileName, pages }))
     .catch(reject)
 }
 
